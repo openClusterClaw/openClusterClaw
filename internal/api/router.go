@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/weibh/openClusterClaw/internal/embed"
 	"github.com/weibh/openClusterClaw/internal/service"
 )
 
@@ -45,6 +46,9 @@ func (r *Router) SetupRoutes() {
 	r.engine.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+
+	// Setup embedded frontend static file serving
+	embed.SetupRouter(r.engine)
 }
 
 // Engine returns the gin engine

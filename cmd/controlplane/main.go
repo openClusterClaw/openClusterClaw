@@ -48,11 +48,12 @@ func main() {
 	// Initialize router
 	router := api.NewRouter(instanceService)
 	router.SetupRoutes()
+	engine := router.Engine()
 
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
-		Handler:      router.Engine(),
+		Handler:      engine,
 		ReadTimeout:  time.Duration(cfg.Server.ReadTimeout) * time.Second,
 		WriteTimeout: time.Duration(cfg.Server.WriteTimeout) * time.Second,
 	}

@@ -1,4 +1,4 @@
-.PHONY: help dev dev-backend dev-frontend build test clean docker db-shell install-tools happy-restart
+.PHONY: help dev dev-backend dev-frontend build build-frontend prepare-embed build-backend cleanup-embed test clean docker db-shell install-tools happy-restart
 
 help: ## 显示帮助信息
 	@echo "可用命令:"
@@ -19,8 +19,30 @@ dev-frontend: ## 启动前端开发服务器
 	@echo "启动前端服务..."
 	@cd frontend && pnpm install --silent && pnpm run dev
 
-build: ## 构建应用
-	go build -o bin/controlplane cmd/controlplane/main.go
+build-frontend: ## 构建前端静态文件
+	@echo "构建前端..."
+	@cd frontend && pnpm install --silent
+	@cd frontend && pnpm run build
+
+prepare-embed: ## 准备嵌入目录（复制前端文件）
+	@echo "准备嵌入目录..."
+	@mkdir -p internal/embed/ui/dist
+	@rm -rf internal/embed/ui/dist/*
+	@cp -r frontend/dist/* internal/embed/ui/dist/
+	@echo "前端文件已复制到 internal/embed/ui/dist/"
+
+build-backend: ## 构建后端（包含嵌入的前端）
+	@echo "构建后端应用..."
+	@go build -o bin/controlplane cmd/controlplane/main.go
+
+build: build-frontend prepare-embed build-backend cleanup-embed ## 完整构建：前端+后端
+	@echo "构建完成！"
+
+cleanup-embed: ## 清理嵌入目录
+	@echo "清理嵌入目录..."
+	@rm -rf internal/embed/ui/dist/*
+	@touch internal/embed/ui/dist/.keep
+	@echo "嵌入目录已清理"
 
 test: ## 运行测试
 	go test -v ./...
@@ -28,7 +50,10 @@ test: ## 运行测试
 clean: ## 清理构建产物
 	rm -rf bin/
 	rm -rf data/
-	cd frontend && rm -rf dist/ node_modules/.vite 2>/dev/null || true
+	rm -rf frontend/dist/
+	rm -rf frontend/node_modules/.vite 2>/dev/null || true
+	rm -rf internal/embed/ui/dist/*
+	@touch internal/embed/ui/dist/.keep
 
 docker-build: ## 构建 Docker 镜像
 	docker build -t open-cluster-claw:latest .

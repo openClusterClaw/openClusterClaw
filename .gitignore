@@ -6,6 +6,7 @@
 *.dylib
 bin/
 dist/
+tmp/
 .playwright-cli/
 # Test binary, built with `go test -c`
 *.test
@@ -40,3 +41,11 @@ data/
 *.db
 *.db-shm
 *.db-wal
+
+# Ignore only top-level embed directory, not internal/embed
+/embed/
+
+# Keep internal/embed/ui/dist directory but ignore contents
+!/internal/embed/
+/internal/embed/ui/dist/*
+!/internal/embed/ui/dist/.gitkeep
