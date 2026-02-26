@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
-import { Layout, Menu, theme } from 'antd';
-import { AppstoreOutlined, SettingOutlined, ClusterOutlined, FileOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Layout, Menu, theme, Dropdown, Avatar } from 'antd';
+import { AppstoreOutlined, SettingOutlined, ClusterOutlined, FileOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { tokenManager, User } from '../../api/auth';
+
+const { Header, Content } = Layout;
 
 const { Sider } = Layout;
 
@@ -11,11 +14,39 @@ interface AppLayoutProps {
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const {
     token: { colorBgContainer },
   } = theme.useToken();
+
+  // Load user from localStorage on mount
+  useEffect(() => {
+    const currentUser = tokenManager.getUser();
+    setUser(currentUser);
+  }, []);
+
+  // Handle logout
+  const handleLogout = () => {
+    tokenManager.clearTokens();
+    navigate('/login');
+  };
+
+  // User menu items
+  const userMenuItems = [
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: '个人信息',
+    },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '退出登录',
+      onClick: handleLogout,
+    },
+  ];
 
   const menuItems = [
     {
@@ -59,7 +90,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         />
       </Sider>
       <Layout>
-        <Layout style={{ padding: '24px' }}>
+        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f0f0f0' }}>
+          <div />
+          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+              <Avatar icon={<UserOutlined />} style={{ marginRight: 8 }} />
+              <span>{user?.username || 'Unknown'}</span>
+              <span style={{ marginLeft: 12, color: '#999' }}>{user?.role || 'user'}</span>
+            </div>
+          </Dropdown>
+        </Header>
+        <Content style={{ padding: '24px' }}>
           <div
             style={{
               padding: 24,
@@ -70,7 +111,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           >
             {children}
           </div>
-        </Layout>
+        </Content>
       </Layout>
     </Layout>
   );

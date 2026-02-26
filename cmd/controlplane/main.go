@@ -14,6 +14,7 @@ import (
 
 	"github.com/weibh/openClusterClaw/config"
 	"github.com/weibh/openClusterClaw/internal/api"
+	"github.com/weibh/openClusterClaw/internal/pkg/jwt"
 	"github.com/weibh/openClusterClaw/internal/repository"
 	"github.com/weibh/openClusterClaw/internal/runtime/k8s"
 	"github.com/weibh/openClusterClaw/internal/service"
@@ -42,6 +43,7 @@ func main() {
 
 	// Initialize repositories
 	instanceRepo := repository.NewInstanceRepository(db)
+	userRepo := repository.NewUserRepository(db)
 
 	// Initialize K8S client
 	var podManager *k8s.PodManager
@@ -71,8 +73,19 @@ func main() {
 	// Initialize services
 	instanceService := service.NewInstanceService(instanceRepo, podManager, configMapManager)
 
+	// Initialize JWT service
+	jwtService := jwt.NewJWTService(cfg)
+
+	// Initialize auth service
+	authService := service.NewAuthService(userRepo, jwtService)
+
+	// Initialize default tenant and admin user if they don't exist
+	if err := initializeDefaultData(db, authService, userRepo); err != nil {
+		log.Printf("Warning: Failed to initialize default data: %v", err)
+	}
+
 	// Initialize router
-	router := api.NewRouter(instanceService)
+	router := api.NewRouter(instanceService, authService, jwtService)
 	router.SetupRoutes()
 	engine := router.Engine()
 
@@ -196,6 +209,18 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_claw_instances_project ON claw_instances(project_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_claw_instances_status ON claw_instances(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects(tenant_id)`,
+		`CREATE TABLE IF NOT EXISTS users (
+			id TEXT PRIMARY KEY,
+			username TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL,
+			tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
+			role TEXT DEFAULT 'user',
+			is_active BOOLEAN DEFAULT true,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`,
 	}
 
 	for _, migration := range migrations {
@@ -203,6 +228,46 @@ func runMigrations(db *sql.DB) error {
 			return fmt.Errorf("migration failed: %w", err)
 		}
 	}
+
+	return nil
+}
+
+// initializeDefaultData creates default tenant and admin user if they don't exist
+func initializeDefaultData(db *sql.DB, authService *service.AuthService, userRepo *repository.UserRepository) error {
+	ctx := context.Background()
+
+	// Check if default admin user exists
+	_, err := userRepo.GetByUsername(ctx, "admin")
+	if err == nil {
+		// Admin user already exists
+		return nil
+	}
+
+	// Create default tenant
+	tenantID := "default-tenant"
+	_, err = db.Exec(`
+		INSERT OR IGNORE INTO tenants (id, name, max_instances, max_cpu, max_memory, max_storage)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, tenantID, "Default Tenant", 100, "100", "200Gi", "1Ti")
+	if err != nil {
+		return fmt.Errorf("failed to create default tenant: %w", err)
+	}
+
+	// Create default admin user
+	defaultAdmin := &service.CreateUserRequest{
+		Username: "admin",
+		Password: "admin123", // Default password, should be changed in production
+		TenantID: tenantID,
+		Role:     "admin",
+	}
+
+	_, err = authService.CreateUser(ctx, defaultAdmin)
+	if err != nil {
+		return fmt.Errorf("failed to create default admin user: %w", err)
+	}
+
+	log.Println("Default admin user created: username=admin, password=admin123")
+	log.Println("Please change the default password after first login!")
 
 	return nil
 }

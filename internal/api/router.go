@@ -3,23 +3,30 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/weibh/openClusterClaw/internal/embed"
+	"github.com/weibh/openClusterClaw/internal/middleware"
+	"github.com/weibh/openClusterClaw/internal/pkg/jwt"
 	"github.com/weibh/openClusterClaw/internal/service"
 )
 
 // Router sets up the API routes
 type Router struct {
-	handler *Handler
-	engine  *gin.Engine
+	handler      *Handler
+	authHandler  *AuthHandler
+	engine       *gin.Engine
+	jwtService   *jwt.JWTService
 }
 
 // NewRouter creates a new router
-func NewRouter(instanceService service.InstanceService) *Router {
+func NewRouter(instanceService service.InstanceService, authService *service.AuthService, jwtService *jwt.JWTService) *Router {
 	handler := NewHandler(instanceService)
+	authHandler := NewAuthHandler(authService)
 	engine := gin.Default()
 
 	return &Router{
-		handler: handler,
-		engine:  engine,
+		handler:      handler,
+		authHandler:  authHandler,
+		engine:       engine,
+		jwtService:   jwtService,
 	}
 }
 
@@ -27,19 +34,44 @@ func NewRouter(instanceService service.InstanceService) *Router {
 func (r *Router) SetupRoutes() {
 	api := r.engine.Group("/api/v1")
 	{
-		instanceHandler := NewInstanceHandler(r.handler.instanceService)
-		instances := api.Group("/instances")
+		// Auth routes (public)
+		auth := api.Group("/auth")
 		{
-			instances.POST("", instanceHandler.Create)
-			instances.GET("", instanceHandler.List)
-			instances.GET("/:id", instanceHandler.Get)
-			instances.DELETE("/:id", instanceHandler.Delete)
-			instances.POST("/:id/start", instanceHandler.Start)
-			instances.POST("/:id/stop", instanceHandler.Stop)
-			instances.POST("/:id/restart", instanceHandler.Restart)
+			auth.POST("/login", r.authHandler.Login)
+			auth.POST("/refresh", r.authHandler.RefreshToken)
 		}
 
-		// TODO: Add other routes (configs, tenants, etc.)
+		// Authenticated routes
+		authenticated := api.Group("")
+		authenticated.Use(middleware.AuthMiddleware(r.jwtService))
+		{
+			// User routes
+			auth := authenticated.Group("/auth")
+			{
+				auth.POST("/logout", r.authHandler.Logout)
+				auth.GET("/me", r.authHandler.GetCurrentUser)
+			}
+
+			// User management (admin only)
+			users := authenticated.Group("/auth/users")
+			users.Use(middleware.RequireAdmin())
+			{
+				users.POST("", r.authHandler.CreateUser)
+			}
+
+			// Instance routes (need authentication)
+			instanceHandler := NewInstanceHandler(r.handler.instanceService)
+			instances := authenticated.Group("/instances")
+			{
+				instances.POST("", instanceHandler.Create)
+				instances.GET("", instanceHandler.List)
+				instances.GET("/:id", instanceHandler.Get)
+				instances.DELETE("/:id", instanceHandler.Delete)
+				instances.POST("/:id/start", instanceHandler.Start)
+				instances.POST("/:id/stop", instanceHandler.Stop)
+				instances.POST("/:id/restart", instanceHandler.Restart)
+			}
+		}
 	}
 
 	// Health check
