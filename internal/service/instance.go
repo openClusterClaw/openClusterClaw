@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"time"
+
 	"github.com/google/uuid"
+	"github.com/weibh/openClusterClaw/internal/adapter"
 	"github.com/weibh/openClusterClaw/internal/domain"
 	"github.com/weibh/openClusterClaw/internal/model"
 	"github.com/weibh/openClusterClaw/internal/repository"
-	"time"
+	"github.com/weibh/openClusterClaw/internal/runtime/k8s"
 )
 
 var (
@@ -49,12 +53,18 @@ type UpdateInstanceRequest struct {
 
 // instanceService implements InstanceService
 type instanceService struct {
-	instanceRepo repository.InstanceRepository
+	instanceRepo     repository.InstanceRepository
+	podManager       *k8s.PodManager
+	configMapManager *k8s.ConfigMapManager
 }
 
 // NewInstanceService creates a new instance service
-func NewInstanceService(repo repository.InstanceRepository) InstanceService {
-	return &instanceService{instanceRepo: repo}
+func NewInstanceService(repo repository.InstanceRepository, podManager *k8s.PodManager, configMapManager *k8s.ConfigMapManager) InstanceService {
+	return &instanceService{
+		instanceRepo:     repo,
+		podManager:       podManager,
+		configMapManager: configMapManager,
+	}
 }
 
 func (s *instanceService) CreateInstance(ctx context.Context, req *CreateInstanceRequest) (*domain.ClawInstance, error) {
@@ -91,9 +101,117 @@ func (s *instanceService) CreateInstance(ctx context.Context, req *CreateInstanc
 		return nil, fmt.Errorf("failed to create instance: %w", err)
 	}
 
-	// TODO: Trigger K8S deployment
+	// Create ConfigMap for the instance configuration
+	var configMapName string
+	if s.configMapManager != nil {
+		configMapName = k8s.GenerateConfigMapName(instance.ID)
+		labels := map[string]string{
+			"app":        "claw",
+			"instanceId": instance.ID,
+			"tenantId":   instance.TenantID,
+			"projectId":  instance.ProjectID,
+		}
+
+		configData := k8s.ConfigMapData{
+			Environment: map[string]string{
+				"CLAW_INSTANCE_ID":   instance.ID,
+				"CLAW_INSTANCE_TYPE": instance.Type,
+				"CLAW_VERSION":       instance.Version,
+			},
+		}
+
+		// Generate config content using adapter
+		if req.Config != nil {
+			configYAML, err := s.generateInstanceConfig(instance.Type, req.Config)
+			if err != nil {
+				log.Printf("Warning: Failed to generate config: %v", err)
+			} else if configYAML != "" {
+				configData.ConfigYAML = configYAML
+			}
+		}
+
+		if _, err := s.configMapManager.CreateOrUpdateConfigMap(ctx, configMapName, labels, configData); err != nil {
+			log.Printf("Warning: Failed to create ConfigMap: %v", err)
+			configMapName = "" // Don't mount if creation failed
+		}
+	}
+
+	// Create K8S Pod for the instance
+	if s.podManager != nil {
+		podName := k8s.GeneratePodName(instance.ID)
+		labels := map[string]string{
+			"app":        "claw",
+			"instanceId": instance.ID,
+			"tenantId":   instance.TenantID,
+			"projectId":  instance.ProjectID,
+			"type":       instance.Type,
+		}
+
+		// Get image based on instance type and version
+		image := s.getImageForInstance(instance.Type, instance.Version)
+
+		spec := k8s.PodSpec{
+			Name:            podName,
+			Namespace:       s.podManager.GetNamespace(),
+			Labels:          labels,
+			Image:           image,
+			CPURequest:      instance.CPU,
+			CPULimit:        instance.CPU,
+			MemoryRequest:   instance.Memory,
+			MemoryLimit:     instance.Memory,
+			ConfigMapName:   configMapName,
+			ConfigMountPath: "/etc/claw/config",
+		}
+
+		if _, err := s.podManager.CreatePod(ctx, spec); err != nil {
+			// Update instance status to failed
+			_ = s.instanceRepo.UpdateStatus(ctx, instance.ID, model.StatusFailed)
+			return nil, fmt.Errorf("failed to create K8S pod: %w", err)
+		}
+
+		// Wait for pod to be ready and update status
+		go s.syncPodStatus(context.Background(), instance.ID, podName)
+	}
 
 	return s.modelToDomain(instance), nil
+}
+
+// getImageForInstance returns the appropriate Docker image for an instance type
+func (s *instanceService) getImageForInstance(instanceType, version string) string {
+	// Try to get image from adapter
+	adp, err := adapter.CreateByString(instanceType)
+	if err == nil {
+		return adp.GetImage(version)
+	}
+
+	// Fallback to default images
+	images := map[string]string{
+		"OpenClaw": "openclaw/openclaw",
+		"NanoClaw": "openclaw/nanoclaw",
+	}
+
+	baseImage, ok := images[instanceType]
+	if !ok {
+		baseImage = "openclaw/openclaw"
+	}
+
+	if version != "" {
+		return fmt.Sprintf("%s:%s", baseImage, version)
+	}
+	return fmt.Sprintf("%s:latest", baseImage)
+}
+
+// syncPodStatus monitors pod status and updates instance status accordingly
+func (s *instanceService) syncPodStatus(ctx context.Context, instanceID, podName string) {
+	// Wait for pod to be ready
+	timeout := 5 * time.Minute
+	if err := s.podManager.WaitForPodReady(ctx, podName, timeout); err != nil {
+		_ = s.instanceRepo.UpdateStatus(ctx, instanceID, model.StatusFailed)
+		return
+	}
+
+	// Update instance status to running
+	_ = s.instanceRepo.UpdateStatus(ctx, instanceID, model.StatusRunning)
 }
 
 func (s *instanceService) GetInstance(ctx context.Context, id string) (*domain.ClawInstance, error) {
@@ -132,6 +250,31 @@ func (s *instanceService) UpdateInstance(ctx context.Context, id string, req *Up
 	}
 	if req.Config != nil {
 		instance.Config = []byte("{}")
+
+		// Update ConfigMap if config changed
+		if s.configMapManager != nil {
+			configMapName := k8s.GenerateConfigMapName(instance.ID)
+			labels := map[string]string{
+				"app":        "claw",
+				"instanceId": instance.ID,
+				"tenantId":   instance.TenantID,
+				"projectId":  instance.ProjectID,
+			}
+
+			configData := k8s.ConfigMapData{
+				Environment: map[string]string{
+					"CLAW_INSTANCE_ID":   instance.ID,
+					"CLAW_INSTANCE_TYPE": instance.Type,
+					"CLAW_VERSION":       instance.Version,
+				},
+				// TODO: Use adapter to generate proper config format
+				ConfigYAML: "# Updated config\n",
+			}
+
+			if _, err := s.configMapManager.CreateOrUpdateConfigMap(ctx, configMapName, labels, configData); err != nil {
+				log.Printf("Warning: Failed to update ConfigMap: %v", err)
+			}
+		}
 	}
 	if req.Resources != nil {
 		instance.CPU = req.Resources.CPU
@@ -159,7 +302,65 @@ func (s *instanceService) StartInstance(ctx context.Context, id string) error {
 		return err
 	}
 
-	// TODO: Trigger K8S pod start
+	// Ensure ConfigMap exists
+	var configMapName string
+	if s.configMapManager != nil {
+		configMapName = k8s.GenerateConfigMapName(instance.ID)
+		labels := map[string]string{
+			"app":        "claw",
+			"instanceId": instance.ID,
+			"tenantId":   instance.TenantID,
+			"projectId":  instance.ProjectID,
+		}
+
+		configData := k8s.ConfigMapData{
+			Environment: map[string]string{
+				"CLAW_INSTANCE_ID":   instance.ID,
+				"CLAW_INSTANCE_TYPE": instance.Type,
+				"CLAW_VERSION":       instance.Version,
+			},
+		}
+
+		if _, err := s.configMapManager.CreateOrUpdateConfigMap(ctx, configMapName, labels, configData); err != nil {
+			log.Printf("Warning: Failed to create ConfigMap: %v", err)
+			configMapName = ""
+		}
+	}
+
+	// Create K8S Pod for the instance
+	if s.podManager != nil {
+		podName := k8s.GeneratePodName(instance.ID)
+		labels := map[string]string{
+			"app":        "claw",
+			"instanceId": instance.ID,
+			"tenantId":   instance.TenantID,
+			"projectId":  instance.ProjectID,
+			"type":       instance.Type,
+		}
+
+		image := s.getImageForInstance(instance.Type, instance.Version)
+
+		spec := k8s.PodSpec{
+			Name:            podName,
+			Namespace:       s.podManager.GetNamespace(),
+			Labels:          labels,
+			Image:           image,
+			CPURequest:      instance.CPU,
+			CPULimit:        instance.CPU,
+			MemoryRequest:   instance.Memory,
+			MemoryLimit:     instance.Memory,
+			ConfigMapName:   configMapName,
+			ConfigMountPath: "/etc/claw/config",
+		}
+
+		if _, err := s.podManager.CreatePod(ctx, spec); err != nil {
+			_ = s.instanceRepo.UpdateStatus(ctx, id, model.StatusFailed)
+			return fmt.Errorf("failed to create K8S pod: %w", err)
+		}
+
+		// Monitor pod status asynchronously
+		go s.syncPodStatus(context.Background(), instance.ID, podName)
+	}
 
 	return nil
 }
@@ -174,11 +375,17 @@ func (s *instanceService) StopInstance(ctx context.Context, id string) error {
 		return ErrInvalidStatus
 	}
 
+	// Delete K8S Pod
+	if s.podManager != nil {
+		podName := k8s.GeneratePodName(instance.ID)
+		if err := s.podManager.DeletePod(ctx, podName); err != nil {
+			return fmt.Errorf("failed to delete K8S pod: %w", err)
+		}
+	}
+
 	if err := s.instanceRepo.UpdateStatus(ctx, id, model.StatusStopped); err != nil {
 		return err
 	}
-
-	// TODO: Trigger K8S pod stop
 
 	return nil
 }
@@ -200,11 +407,23 @@ func (s *instanceService) DeleteInstance(ctx context.Context, id string) error {
 		return ErrInvalidStatus
 	}
 
+	// Delete K8S Pod if it exists
+	if s.podManager != nil {
+		podName := k8s.GeneratePodName(instance.ID)
+		// Ignore error if pod doesn't exist
+		_ = s.podManager.DeletePod(ctx, podName)
+	}
+
+	// Delete ConfigMap if it exists
+	if s.configMapManager != nil {
+		configMapName := k8s.GenerateConfigMapName(instance.ID)
+		// Ignore error if configmap doesn't exist
+		_ = s.configMapManager.DeleteConfigMap(ctx, configMapName)
+	}
+
 	if err := s.instanceRepo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete instance: %w", err)
 	}
-
-	// TODO: Trigger K8S pod deletion
 
 	return nil
 }
@@ -231,4 +450,58 @@ func (s *instanceService) modelToDomain(m *model.ClawInstance) *domain.ClawInsta
 		CreatedAt: m.CreatedAt,
 		UpdatedAt: m.UpdatedAt,
 	}
+}
+
+// generateInstanceConfig generates configuration for an instance using the appropriate adapter
+func (s *instanceService) generateInstanceConfig(instanceType string, config *domain.InstanceConfig) (string, error) {
+	// Get the adapter for this instance type
+	adp, err := adapter.CreateByString(instanceType)
+	if err != nil {
+		// If adapter not found, return empty config
+		log.Printf("Warning: No adapter found for type %s, using empty config", instanceType)
+		return "", nil
+	}
+
+	// Build unified config from request
+	unifiedConfig := adp.GetDefaultConfig()
+	if config != nil {
+		// Apply overrides from config
+		for key, value := range config.Overrides {
+			// Simple key-value mapping, can be enhanced for nested paths
+			switch key {
+			case "model.name":
+				unifiedConfig.Model.Name = value
+			case "model.api_key":
+				unifiedConfig.Model.APIKey = value
+			case "model.base_url":
+				unifiedConfig.Model.BaseURL = value
+			case "memory.limit":
+				// Parse string to int
+				var limit int
+				fmt.Sscanf(value, "%d", &limit)
+				unifiedConfig.Memory.Limit = limit
+			case "memory.storage_type":
+				unifiedConfig.Memory.StorageType = value
+			case "logging.level":
+				unifiedConfig.Logging.Level = value
+			}
+		}
+	}
+
+	// Parse and validate config
+	if err := adp.ParseConfig(unifiedConfig); err != nil {
+		return "", fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	if err := adp.Validate(); err != nil {
+		return "", fmt.Errorf("config validation failed: %w", err)
+	}
+
+	// Generate the config
+	configStr, err := adp.GenerateConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate config: %w", err)
+	}
+
+	return configStr, nil
 }

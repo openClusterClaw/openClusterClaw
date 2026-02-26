@@ -15,6 +15,7 @@ import (
 	"github.com/weibh/openClusterClaw/config"
 	"github.com/weibh/openClusterClaw/internal/api"
 	"github.com/weibh/openClusterClaw/internal/repository"
+	"github.com/weibh/openClusterClaw/internal/runtime/k8s"
 	"github.com/weibh/openClusterClaw/internal/service"
 	_ "modernc.org/sqlite"
 )
@@ -42,8 +43,33 @@ func main() {
 	// Initialize repositories
 	instanceRepo := repository.NewInstanceRepository(db)
 
+	// Initialize K8S client
+	var podManager *k8s.PodManager
+	var configMapManager *k8s.ConfigMapManager
+	if cfg.K8S.Enabled {
+		kubeconfig := cfg.K8S.Kubeconfig
+		if kubeconfig == "" {
+			// Try environment variable or default path
+			kubeconfig = os.Getenv("KUBECONFIG")
+		}
+
+		err := k8s.Initialize(kubeconfig)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize K8S client: %v", err)
+			log.Println("Continuing without K8S integration...")
+		} else {
+			namespace := cfg.K8S.Namespace
+			if namespace == "" {
+				namespace = "default"
+			}
+			podManager = k8s.NewPodManager(namespace)
+			configMapManager = k8s.NewConfigMapManager(namespace)
+			log.Printf("K8S client initialized, using namespace: %s", namespace)
+		}
+	}
+
 	// Initialize services
-	instanceService := service.NewInstanceService(instanceRepo)
+	instanceService := service.NewInstanceService(instanceRepo, podManager, configMapManager)
 
 	// Initialize router
 	router := api.NewRouter(instanceService)

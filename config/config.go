@@ -25,6 +25,7 @@ type DatabaseConfig struct {
 }
 
 type K8SConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
 	Kubeconfig string `mapstructure:"kubeconfig"`
 	Namespace  string `mapstructure:"namespace"`
 }
