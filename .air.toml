@@ -1,0 +1,13 @@
+[build]
+  bin = "./bin/controlplane"
+  cmd = "go build -o ./bin/controlplane ./cmd/controlplane/main.go"
+  delay = 1000
+  exclude_dir = ["assets", "tmp", "vendor", "testdata", "frontend", "node_modules"]
+  exclude_regex = ["_test.go"]
+  include_ext = ["go", "yaml", "yml"]
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = false

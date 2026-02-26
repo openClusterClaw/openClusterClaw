@@ -1,0 +1,21 @@
+server:
+  port: 8080
+  mode: debug # debug, release, test
+  read_timeout: 60
+  write_timeout: 60
+
+database:
+  path: ./data/clusterclaw.db
+
+k8s:
+  kubeconfig: "" # empty for in-cluster config
+  namespace: default
+
+log:
+  level: debug # debug, info, warn, error
+  format: json # json, text
+  output: stdout # stdout, file
+
+jwt:
+  secret: your-secret-key-change-in-production
+  expire_time: 86400 # 24 hours in seconds

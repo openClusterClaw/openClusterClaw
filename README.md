@@ -1,40 +1,72 @@
-## openClusterClaw
+# Open Cluster Claw
 
-openClusterClaw is an enterprise-grade cluster orchestration and governance platform built for **OpenClaw at scale**. It transforms standalone OpenClaw instances into centrally managed, multi-tenant, production-ready infrastructure.
+多实例、多类型 Claw 统一控制平面（Control Plane）
 
-Designed for organizations operating large numbers of OpenClaw deployments, openClusterClaw provides unified control over the entire lifecycle of distributed instances—while abstracting infrastructure complexity from end users.
+## 快速开始
 
-### Core Capabilities
+### 后端
 
-* **Cluster-Scale Instance Management**
-  Centralized provisioning, deployment, scaling, upgrade, and termination of OpenClaw instances.
+```bash
+# 安装依赖
+go mod download
 
-* **Lifecycle Governance**
-  Full lifecycle management from creation to decommissioning with policy enforcement and operational visibility.
+# 运行服务
+go run cmd/controlplane/main.go
+```
 
-* **Centralized Configuration Management**
-  Multi-instance configuration standardization, version control, and controlled rollout across environments.
+### 前端
 
-* **Multi-Tenant Isolation**
-  Logical separation of tenants with governance controls, quota policies, and access management.
+```bash
+cd frontend
+pnpm install
+pnpm dev
+```
 
-* **Unified Observability**
-  Centralized monitoring of instance health, runtime status, and operational metrics across clusters.
+## 项目结构
 
-### Value Proposition
+```
+openClusterClaw/
+├── cmd/                 # 应用入口
+│   └── controlplane/    # 控制平面启动入口
+├── internal/            # 内部包
+│   ├── api/            # API 路由和 Handler
+│   ├── service/        # 业务服务层
+│   ├── domain/         # 领域模型
+│   ├── repository/     # 数据访问层
+│   ├── model/          # 数据库模型
+│   └── middleware/     # 中间件
+├── config/             # 配置管理
+├── migrations/         # 数据库迁移
+├── docs/              # 文档
+└── pkg/               # 通用工具
+```
 
-openClusterClaw elevates OpenClaw from a distributed tool deployment model to an enterprise-managed service layer.
+## 技术栈
 
-Enterprises manage:
+### 后端
+- Go 1.21+
+- Gin (Web 框架)
+- PostgreSQL (数据库)
+- Kubernetes (运行时)
+- pgx/v5 (数据库驱动)
 
-* Underlying infrastructure and compute resources
-* Configuration standards and governance policies
-* Security, compliance, and operational control
+### 前端
+- React 18
+- TypeScript
+- Vite
+- Ant Design 5
+- pnpm
 
-End users receive:
+## API 文档
 
-* Turnkey OpenClaw access
-* On-demand instance provisioning
-* Simplified, self-service usage
+查看 `docs/API.md` 获取详细的 API 文档
 
-In this model, **OpenClaw becomes infrastructure. OpenClaw becomes a service.**
+## 开发文档
+
+- [需求文档](requirements.md)
+- [架构文档](architecture.md)
+- [开发规范](docs/开发规范/)
+
+## License
+
+MIT
