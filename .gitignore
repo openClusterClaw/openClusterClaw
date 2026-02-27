@@ -48,4 +48,4 @@ data/
 # Keep internal/embed/ui/dist directory but ignore contents
 !/internal/embed/
 /internal/embed/ui/dist/*
-!/internal/embed/ui/dist/.gitkeep
+!/internal/embed/ui/dist/.gitkeep.playwright-mcp/

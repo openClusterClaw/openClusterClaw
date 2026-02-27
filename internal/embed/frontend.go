@@ -25,7 +25,10 @@ func SetupRouter(r *gin.Engine) {
 	// 获取assets目录的文件系统
 	assetsFS, err := fs.Sub(frontendFS, "ui/dist/assets")
 	if err == nil {
-		r.GET("/assets/*filepath", gin.WrapH(http.StripPrefix("/assets", http.FileServer(http.FS(assetsFS)))))
+		handler := http.FileServer(http.FS(assetsFS))
+		stripHandler := http.StripPrefix("/assets", handler)
+		wrapHandler := gin.WrapH(stripHandler)
+		r.GET("/assets/*filepath", wrapHandler)
 	}
 
 	// 设置根路由（SPA）

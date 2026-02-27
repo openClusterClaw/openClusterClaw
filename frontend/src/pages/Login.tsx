@@ -12,6 +12,12 @@ const Login: React.FC = () => {
     setLoading(true);
     try {
       const response = await authApi.login(values);
+
+      // Check if response is valid
+      if (!response || !response.access_token || !response.user) {
+        throw new Error('Invalid response from server');
+      }
+
       tokenManager.setTokens(
         response.access_token,
         response.refresh_token,
@@ -20,7 +26,8 @@ const Login: React.FC = () => {
       message.success('Login successful');
       navigate('/');
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'Login failed');
+      console.error('Login error:', error);
+      message.error(error.response?.data?.message || error.message || 'Login failed');
     } finally {
       setLoading(false);
     }

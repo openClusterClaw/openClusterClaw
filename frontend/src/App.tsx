@@ -4,13 +4,18 @@ import AppLayout from './components/common/Layout';
 import InstanceList from './pages/InstanceList';
 import InstanceDetail from './pages/InstanceDetail';
 import Login from './pages/Login';
-import { tokenManager } from './api/auth';
 
 // ProtectedRoute component that checks authentication
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
 
-  if (!tokenManager.isAuthenticated()) {
+  // Directly check localStorage to avoid tree-shaking issues
+  const isAuthenticated = (() => {
+    const token = localStorage.getItem('access_token');
+    return !!token;
+  })();
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

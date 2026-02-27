@@ -103,8 +103,8 @@ export interface User {
 // Auth API
 export const authApi = {
   login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-    const response = await axios.post<LoginResponse>(`${API_BASE_URL}/auth/login`, credentials);
-    return response.data;
+    const response = await axios.post<ApiResponse<LoginResponse>>(`${API_BASE_URL}/auth/login`, credentials);
+    return response.data.data;
   },
 
   logout: async (): Promise<void> => {
@@ -117,10 +117,10 @@ export const authApi = {
   },
 
   refreshToken: async (refreshToken: string): Promise<LoginResponse> => {
-    const response = await axios.post<LoginResponse>(`${API_BASE_URL}/auth/refresh`, {
+    const response = await axios.post<ApiResponse<LoginResponse>>(`${API_BASE_URL}/auth/refresh`, {
       refresh_token: refreshToken,
     });
-    return response.data;
+    return response.data.data;
   },
 };
 
@@ -148,7 +148,14 @@ export const tokenManager = {
 
   getUser: (): User | null => {
     const userStr = localStorage.getItem('user');
-    return userStr ? JSON.parse(userStr) : null;
+    if (!userStr || userStr === 'undefined') {
+      return null;
+    }
+    try {
+      return JSON.parse(userStr);
+    } catch {
+      return null;
+    }
   },
 
   isAuthenticated: (): boolean => {
