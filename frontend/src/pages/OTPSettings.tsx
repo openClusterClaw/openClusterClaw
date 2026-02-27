@@ -141,10 +141,10 @@ const OTPSettings: React.FC = () => {
     });
   };
 
-  const steps = [
+  const stepsItems = [
     {
       title: '选择操作',
-      content: (
+      description: (
         <div style={{ padding: '20px 0' }}>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             {!otpStatus.otp_enabled ? (
@@ -186,7 +186,7 @@ const OTPSettings: React.FC = () => {
     },
     {
       title: '扫描二维码',
-      content: (
+      description: (
         <div style={{ padding: '20px 0', textAlign: 'center' }}>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             <Alert
@@ -247,7 +247,7 @@ const OTPSettings: React.FC = () => {
     },
     {
       title: '启用成功',
-      content: (
+      description: (
         <div style={{ padding: '20px 0' }}>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             <Alert
@@ -296,7 +296,7 @@ const OTPSettings: React.FC = () => {
     },
     {
       title: '禁用 OTP',
-      content: (
+      description: (
         <div style={{ padding: '20px 0' }}>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             <Alert
@@ -354,7 +354,7 @@ const OTPSettings: React.FC = () => {
           </Space>
         </div>
 
-        <Steps current={currentStep} items={steps} />
+        <Steps current={currentStep} items={stepsItems} />
       </Card>
 
       <Modal
