@@ -5,6 +5,8 @@ import InstanceList from './pages/InstanceList';
 import InstanceDetail from './pages/InstanceDetail';
 import Login from './pages/Login';
 import OTPSettings from './pages/OTPSettings';
+import ConfigTemplateList from './pages/ConfigTemplateList';
+import TenantProjectManagement from './pages/TenantProjectManagement';
 
 // ProtectedRoute component that checks authentication
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -41,6 +43,8 @@ const App: React.FC = () => {
                     <Route path="/" element={<Navigate to="/instances" replace />} />
                     <Route path="/instances" element={<InstanceList />} />
                     <Route path="/instances/:id" element={<InstanceDetail />} />
+                    <Route path="/configs" element={<ConfigTemplateList />} />
+                    <Route path="/tenants" element={<TenantProjectManagement />} />
                     <Route path="/settings/otp" element={<OTPSettings />} />
                   </Routes>
                 </AppLayout>

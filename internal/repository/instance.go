@@ -22,6 +22,7 @@ type InstanceRepository interface {
 type ConfigTemplateRepository interface {
 	Create(ctx context.Context, template *model.ConfigTemplate) error
 	GetByID(ctx context.Context, id string) (*model.ConfigTemplate, error)
+	GetByName(ctx context.Context, name string) (*model.ConfigTemplate, error)
 	List(ctx context.Context, limit, offset int) ([]*model.ConfigTemplate, error)
 	Update(ctx context.Context, template *model.ConfigTemplate) error
 	Delete(ctx context.Context, id string) error
@@ -31,8 +32,11 @@ type ConfigTemplateRepository interface {
 type TenantRepository interface {
 	Create(ctx context.Context, tenant *model.Tenant) error
 	GetByID(ctx context.Context, id string) (*model.Tenant, error)
+	GetByName(ctx context.Context, name string) (*model.Tenant, error)
 	List(ctx context.Context, limit, offset int) ([]*model.Tenant, error)
+	ListWithCount(ctx context.Context, limit, offset int) ([]*model.Tenant, int, error)
 	Update(ctx context.Context, tenant *model.Tenant) error
+	Delete(ctx context.Context, id string) error
 }
 
 // ProjectRepository defines the interface for project data access
@@ -40,7 +44,9 @@ type ProjectRepository interface {
 	Create(ctx context.Context, project *model.Project) error
 	GetByID(ctx context.Context, id string) (*model.Project, error)
 	ListByTenant(ctx context.Context, tenantID string, limit, offset int) ([]*model.Project, error)
+	List(ctx context.Context, limit, offset int) ([]*model.Project, int, error)
 	Update(ctx context.Context, project *model.Project) error
+	Delete(ctx context.Context, id string) error
 }
 
 // instanceRepository implements InstanceRepository

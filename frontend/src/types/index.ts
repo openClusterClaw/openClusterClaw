@@ -70,20 +70,20 @@ export interface InstanceListResponse {
 }
 
 // Config Template Types
-export interface ConfigVariable {
+export interface TemplateVariable {
   name: string;
-  type: 'string' | 'number' | 'boolean';
-  default: string;
+  type: string;
+  default: any;
   required: boolean;
-  secret: boolean;
   description: string;
+  secret: boolean;
 }
 
 export interface ConfigTemplate {
   id: string;
   name: string;
   description: string;
-  variables: ConfigVariable[];
+  variables: TemplateVariable[];
   adapter_type: string;
   version: string;
   created_at: string;

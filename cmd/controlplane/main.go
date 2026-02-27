@@ -56,6 +56,9 @@ func main() {
 	// Initialize repositories
 	instanceRepo := repository.NewInstanceRepository(db)
 	userRepo := repository.NewUserRepository(db)
+	configTemplateRepo := repository.NewConfigTemplateRepository(db)
+	tenantRepo := repository.NewTenantRepository(db)
+	projectRepo := repository.NewProjectRepository(db)
 
 	// Initialize K8S client
 	var podManager *k8s.PodManager
@@ -84,6 +87,9 @@ func main() {
 
 	// Initialize services
 	instanceService := service.NewInstanceService(instanceRepo, podManager, configMapManager)
+	configTemplateService := service.NewConfigTemplateService(configTemplateRepo)
+	tenantService := service.NewTenantService(tenantRepo, instanceRepo)
+	projectService := service.NewProjectService(projectRepo)
 
 	// Initialize JWT service
 	jwtService := jwt.NewJWTService(cfg)
@@ -97,7 +103,7 @@ func main() {
 	}
 
 	// Initialize router
-	router := api.NewRouter(instanceService, authService, jwtService, userRepo, cfg)
+	router := api.NewRouter(instanceService, configTemplateService, tenantService, projectService, authService, jwtService, userRepo, cfg)
 	router.SetupRoutes()
 	engine := router.Engine()
 

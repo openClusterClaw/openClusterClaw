@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Menu, theme, Dropdown, Avatar } from 'antd';
-import { AppstoreOutlined, SettingOutlined, ClusterOutlined, FileOutlined, UserOutlined, LogoutOutlined, SafetyOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, SettingOutlined, ClusterOutlined, FileOutlined, UserOutlined, LogoutOutlined, SafetyOutlined, TeamOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { tokenManager, User } from '../../api/auth';
 
@@ -64,6 +64,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       key: '/configs',
       icon: <FileOutlined />,
       label: '配置管理',
+    },
+    {
+      key: '/tenants',
+      icon: <TeamOutlined />,
+      label: '租户管理',
     },
     {
       key: '/monitoring',

@@ -30,6 +30,7 @@ type InstanceService interface {
 	StopInstance(ctx context.Context, id string) error
 	RestartInstance(ctx context.Context, id string) error
 	DeleteInstance(ctx context.Context, id string) error
+	GetInstanceLogs(ctx context.Context, id string, tailLines int64) (string, error)
 }
 
 // CreateInstanceRequest represents the request to create an instance
@@ -504,4 +505,19 @@ func (s *instanceService) generateInstanceConfig(instanceType string, config *do
 	}
 
 	return configStr, nil
+}
+
+// GetInstanceLogs retrieves logs for an instance
+func (s *instanceService) GetInstanceLogs(ctx context.Context, id string, tailLines int64) (string, error) {
+	if s.podManager == nil {
+		return "", fmt.Errorf("K8S integration not enabled")
+	}
+
+	podName := k8s.GeneratePodName(id)
+	logs, err := s.podManager.GetPodLogs(ctx, podName, tailLines)
+	if err != nil {
+		return "", fmt.Errorf("failed to get pod logs: %w", err)
+	}
+
+	return logs, nil
 }

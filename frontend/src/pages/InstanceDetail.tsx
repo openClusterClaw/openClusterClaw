@@ -4,6 +4,7 @@ import { Card, Descriptions, Button, Space, Tag, message, Spin } from 'antd';
 import { ArrowLeftOutlined, PlayCircleOutlined, StopOutlined, SyncOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { instanceApi } from '@/api/instance';
+import InstanceLogs from '@/components/instances/InstanceLogs';
 import type { ClawInstance } from '@/types';
 import { getStatusColor, formatDateTime, formatResourceSize } from '@/utils/format';
 
@@ -81,6 +82,26 @@ const InstanceDetail: React.FC = () => {
     }
   };
 
+  const handleDelete = async () => {
+    if (!id) return;
+    // Confirm before delete
+    const confirmed = window.confirm('确定要删除这个实例吗？此操作无法撤销。');
+    if (!confirmed) return;
+
+    setActionLoading(true);
+    try {
+      const { data } = await instanceApi.delete(id);
+      if (data.code === 0) {
+        message.success('实例删除成功');
+        navigate('/instances');
+      }
+    } catch (error) {
+      message.error('实例删除失败');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading || !instance) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
@@ -108,7 +129,7 @@ const InstanceDetail: React.FC = () => {
           <Button icon={<SyncOutlined />} loading={actionLoading} onClick={handleRestart}>
             重启
           </Button>
-          <Button danger icon={<DeleteOutlined />}>
+          <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>
             删除
           </Button>
         </Space>
@@ -140,6 +161,10 @@ const InstanceDetail: React.FC = () => {
             </Descriptions>
           </Card>
         )}
+      </Card>
+
+      <Card title="实例日志" style={{ marginTop: 16 }}>
+        <InstanceLogs instanceId={instance.id} />
       </Card>
     </div>
   );

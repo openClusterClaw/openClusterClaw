@@ -15,16 +15,22 @@ import (
 
 // Router sets up API routes
 type Router struct {
-	handler      *Handler
-	authHandler  *AuthHandler
-	otpHandler   *OTPHandler
-	engine       *gin.Engine
-	jwtService   *jwt.JWTService
+	handler         *Handler
+	authHandler     *AuthHandler
+	otpHandler      *OTPHandler
+	configHandler   *ConfigTemplateHandler
+	tenantHandler   *TenantHandler
+	projectHandler  *ProjectHandler
+	engine          *gin.Engine
+	jwtService      *jwt.JWTService
 }
 
 // NewRouter creates a new router
 func NewRouter(
 	instanceService service.InstanceService,
+	configTemplateService service.ConfigTemplateService,
+	tenantService service.TenantService,
+	projectService service.ProjectService,
 	authService *service.AuthService,
 	jwtService *jwt.JWTService,
 	userRepo *repository.UserRepository,
@@ -32,6 +38,9 @@ func NewRouter(
 ) *Router {
 	handler := NewHandler(instanceService)
 	authHandler := NewAuthHandler(authService)
+	configHandler := NewConfigTemplateHandler(configTemplateService)
+	tenantHandler := NewTenantHandler(tenantService)
+	projectHandler := NewProjectHandler(projectService)
 	engine := gin.Default()
 
 	// Create OTP service from config
@@ -47,11 +56,14 @@ func NewRouter(
 	otpHandler := NewOTPHandler(otpSvc, authService, userRepo)
 
 	return &Router{
-		handler:      handler,
-		authHandler:  authHandler,
-		otpHandler:   otpHandler,
-		engine:       engine,
-		jwtService:   jwtService,
+		handler:         handler,
+		authHandler:     authHandler,
+		otpHandler:      otpHandler,
+		configHandler:   configHandler,
+		tenantHandler:   tenantHandler,
+		projectHandler:  projectHandler,
+		engine:          engine,
+		jwtService:      jwtService,
 	}
 }
 
@@ -95,6 +107,39 @@ func (r *Router) SetupRoutes() {
 				users.POST("", r.authHandler.CreateUser)
 			}
 
+			// Config template routes (admin only)
+			configs := authenticated.Group("/configs")
+			configs.Use(middleware.RequireAdmin())
+			{
+				configs.POST("", r.configHandler.Create)
+				configs.GET("", r.configHandler.List)
+				configs.GET("/:id", r.configHandler.Get)
+				configs.PUT("/:id", r.configHandler.Update)
+				configs.DELETE("/:id", r.configHandler.Delete)
+			}
+
+			// Tenant routes (admin only)
+			tenants := authenticated.Group("/tenants")
+			tenants.Use(middleware.RequireAdmin())
+			{
+				tenants.POST("", r.tenantHandler.Create)
+				tenants.GET("", r.tenantHandler.List)
+				tenants.GET("/:id", r.tenantHandler.Get)
+				tenants.PUT("/:id", r.tenantHandler.Update)
+				tenants.DELETE("/:id", r.tenantHandler.Delete)
+			}
+
+			// Project routes (admin only)
+			projects := authenticated.Group("/projects")
+			projects.Use(middleware.RequireAdmin())
+			{
+				projects.POST("", r.projectHandler.Create)
+				projects.GET("", r.projectHandler.List)
+				projects.GET("/:id", r.projectHandler.Get)
+				projects.PUT("/:id", r.projectHandler.Update)
+				projects.DELETE("/:id", r.projectHandler.Delete)
+			}
+
 			// Instance routes (need authentication)
 			instanceHandler := NewInstanceHandler(r.handler.instanceService)
 			instances := authenticated.Group("/instances")
@@ -106,6 +151,7 @@ func (r *Router) SetupRoutes() {
 				instances.POST("/:id/start", instanceHandler.Start)
 				instances.POST("/:id/stop", instanceHandler.Stop)
 				instances.POST("/:id/restart", instanceHandler.Restart)
+				instances.GET("/:id/logs", instanceHandler.Logs)
 			}
 		}
 	}

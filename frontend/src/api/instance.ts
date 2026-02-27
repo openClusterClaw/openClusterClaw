@@ -32,4 +32,16 @@ export const instanceApi = {
 
   // Restart instance
   restart: (id: string) => apiClient.post<ApiResponse<{ message: string }>>(`/instances/${id}/restart`),
+
+  // Get instance logs
+  getLogs: (id: string, tailLines?: number) =>
+    apiClient.get<ApiResponse<{ logs: string; tail_lines: number }>>(`/instances/${id}/logs`, {
+      params: tailLines ? { tail_lines: tailLines } : undefined,
+    }),
+
+  // Helper method to get logs string directly
+  getInstanceLogs: async (id: string, tailLines = 100): Promise<string> => {
+    const response = await instanceApi.getLogs(id, tailLines);
+    return response.data.data?.logs || '';
+  },
 };

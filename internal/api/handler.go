@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/weibh/openClusterClaw/internal/service"
 	"net/http"
@@ -176,4 +177,25 @@ func (h *InstanceHandler) Delete(c *gin.Context) {
 	}
 
 	success(c, gin.H{"message": "instance deleted"})
+}
+
+// Logs retrieves logs for an instance
+func (h *InstanceHandler) Logs(c *gin.Context) {
+	id := c.Param("id")
+	tailLines := int64(100) // Default to 100 lines
+
+	if tailStr := c.Query("tail_lines"); tailStr != "" {
+		fmt.Sscanf(tailStr, "%d", &tailLines)
+	}
+
+	logs, err := h.service.GetInstanceLogs(c.Request.Context(), id, tailLines)
+	if err != nil {
+		errorResponse(c, http.StatusInternalServerError, "failed to get logs", err)
+		return
+	}
+
+	success(c, gin.H{
+		"logs": logs,
+		"tail_lines": tailLines,
+	})
 }
