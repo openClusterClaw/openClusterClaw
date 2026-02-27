@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"github.com/gin-gonic/gin"
 	"github.com/weibh/openClusterClaw/internal/embed"
 	"github.com/weibh/openClusterClaw/internal/middleware"
@@ -9,6 +10,7 @@ import (
 	"github.com/weibh/openClusterClaw/internal/service"
 	"github.com/weibh/openClusterClaw/internal/repository"
 	"github.com/weibh/openClusterClaw/config"
+	"log"
 )
 
 // Router sets up API routes
@@ -33,9 +35,16 @@ func NewRouter(
 	engine := gin.Default()
 
 	// Create OTP service from config
-	otpService := otp.NewService(cfg.OTP.EncryptionKey, cfg.OTP.Issuer)
+	encryptionKeyBytes, err := hex.DecodeString(cfg.OTP.EncryptionKey)
+	if err != nil {
+		log.Fatalf("Failed to decode encryption key: %v", err)
+	}
+	if len(encryptionKeyBytes) != 32 {
+		log.Fatalf("Encryption key must be 32 bytes, got %d", len(encryptionKeyBytes))
+	}
+	otpService := otp.NewService(string(encryptionKeyBytes), cfg.OTP.Issuer)
 	otpSvc := service.NewOTPService(userRepo, otpService, jwtService)
-	otpHandler := NewOTPHandler(otpSvc, authService)
+	otpHandler := NewOTPHandler(otpSvc, authService, userRepo)
 
 	return &Router{
 		handler:      handler,

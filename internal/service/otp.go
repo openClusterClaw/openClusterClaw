@@ -114,7 +114,7 @@ func (s *OTPService) EnableOTP(ctx context.Context, userID string, req *EnableOT
 	}
 
 	// Verify the code
-	valid, err := s.otpService.ValidateCodeWithWindow(req.Code, secret)
+	valid, err := s.otpService.ValidateCode(req.Code, secret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate code: %w", err)
 	}
@@ -165,7 +165,7 @@ func (s *OTPService) DisableOTP(ctx context.Context, userID string, req *Disable
 	}
 
 	// Verify the code
-	valid, err := s.otpService.ValidateCodeWithWindow(req.Code, secret)
+	valid, err := s.otpService.ValidateCode(req.Code, secret)
 	if err != nil {
 		return fmt.Errorf("failed to validate code: %w", err)
 	}
@@ -201,7 +201,7 @@ func (s *OTPService) VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*Log
 	}
 
 	// Try TOTP validation first
-	valid, err := s.otpService.ValidateCodeWithWindow(req.Code, secret)
+	valid, err := s.otpService.ValidateCode(req.Code, secret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate code: %w", err)
 	}

@@ -23,8 +23,20 @@ import (
 )
 
 func main() {
-	// Load configuration
-	cfg, err := config.Load("../../config/config.yaml")
+	// Load configuration - try multiple paths
+	cfgPaths := []string{
+		"../../config/config.yaml",
+		"../config/config.yaml",
+		"./config/config.yaml",
+	}
+	var cfg *config.Config
+	var err error
+	for _, path := range cfgPaths {
+		cfg, err = config.Load(path)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}

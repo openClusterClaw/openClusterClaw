@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/weibh/openClusterClaw/internal/repository"
 	"github.com/weibh/openClusterClaw/internal/service"
 )
 
@@ -11,13 +12,15 @@ import (
 type OTPHandler struct {
 	otpService   *service.OTPService
 	authService  *service.AuthService
+	userRepo     *repository.UserRepository
 }
 
 // NewOTPHandler creates a new OTP handler
-func NewOTPHandler(otpService *service.OTPService, authService *service.AuthService) *OTPHandler {
+func NewOTPHandler(otpService *service.OTPService, authService *service.AuthService, userRepo *repository.UserRepository) *OTPHandler {
 	return &OTPHandler{
 		otpService:  otpService,
 		authService: authService,
+		userRepo:    userRepo,
 	}
 }
 
@@ -189,18 +192,23 @@ func (h *OTPHandler) GetBackupCodes(c *gin.Context) {
 // @Success 200 {object} object "OTP status"
 // @Router /auth/otp/status [get]
 func (h *OTPHandler) GetOTPStatus(c *gin.Context) {
-	// Get user ID from context
-	_, exists := c.Get("user_id")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		errorResponse(c, http.StatusUnauthorized, "unauthorized", nil)
 		return
 	}
 
-	// For now, just return that OTP status check is not yet implemented
-	// In a full implementation, you would query the user repository
+	ctx := c.Request.Context()
+
+	// Get user directly from repository to check OTP status
+	user, err := h.userRepo.GetByID(ctx, userID.(string))
+	if err != nil {
+		errorResponse(c, http.StatusNotFound, "user not found", err)
+		return
+	}
+
 	success(c, gin.H{
-		"otp_enabled": false,
-		"message": "OTP status check - to be implemented with repository query",
+		"otp_enabled": user.OTPEnabled,
 	})
 }
 
