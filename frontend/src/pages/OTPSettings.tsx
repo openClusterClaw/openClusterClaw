@@ -144,198 +144,214 @@ const OTPSettings: React.FC = () => {
   const stepsItems = [
     {
       title: '选择操作',
-      description: (
-        <div style={{ padding: '20px 0' }}>
-          <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            {!otpStatus.otp_enabled ? (
-              <Button
-                type="primary"
-                icon={<QrcodeOutlined />}
-                onClick={handleGenerateSecret}
-                loading={loading}
-                size="large"
-                block
-              >
-                启用 OTP 验证
-              </Button>
-            ) : (
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                <Button
-                  icon={<SafetyOutlined />}
-                  onClick={() => {
-                    setDisableCode('');
-                    setCurrentStep(3);
-                  }}
-                  size="large"
-                  block
-                >
-                  禁用 OTP 验证
-                </Button>
-                <Button
-                  onClick={handleShowBackupCodes}
-                  size="large"
-                  block
-                >
-                  查看备份码
-                </Button>
-              </Space>
-            )}
-          </Space>
-        </div>
-      ),
     },
     {
       title: '扫描二维码',
-      description: (
-        <div style={{ padding: '20px 0', textAlign: 'center' }}>
-          <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            <Alert
-              message="使用 Google Authenticator 等应用扫描下方二维码"
-              type="info"
-              showIcon
-            />
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-              <img src={qrCode} alt="QR Code" style={{ width: 256, height: 256 }} />
-            </div>
-            <div>
-              <Text strong>密钥：</Text>
-              <Input
-                value={secret}
-                readOnly
-                suffix={
-                  <CopyOutlined
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => {
-                      navigator.clipboard.writeText(secret);
-                      Modal.success({ title: '已复制', content: '密钥已复制到剪贴板' });
-                    }}
-                  />
-                }
-                style={{ fontFamily: 'monospace', fontSize: '16px' }}
-              />
-            </div>
-            <div>
-              <Text>1. 使用 Google Authenticator、Authy 等 OTP 应用</Text>
-              <Text>2. 扫描上方二维码或手动输入密钥</Text>
-              <Text>3. 输入应用显示的 6 位验证码</Text>
-            </div>
-            <Input
-              placeholder="请输入应用显示的 6 位验证码"
-              maxLength={6}
-              value={verifyCode}
-              onChange={(e) => setVerifyCode(e.target.value)}
-              size="large"
-              style={{ textAlign: 'center', letterSpacing: '8px', fontSize: '24px' }}
-            />
-            <Space style={{ width: '100%' }}>
-              <Button onClick={() => setCurrentStep(0)} style={{ flex: 1 }}>
-                取消
-              </Button>
-              <Button
-                type="primary"
-                onClick={handleEnableOTP}
-                loading={loading}
-                disabled={!verifyCode || verifyCode.length !== 6}
-                style={{ flex: 1 }}
-              >
-                验证并启用
-              </Button>
-            </Space>
-          </Space>
-        </div>
-      ),
     },
     {
       title: '启用成功',
-      description: (
-        <div style={{ padding: '20px 0' }}>
-          <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            <Alert
-              message="OTP 二次验证已成功启用！"
-              description="请保存以下备份码，当无法使用 Authenticator 时可以使用这些代码登录。"
-              type="success"
-              showIcon
-            />
-            <List
-              header={
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text strong>备份码（每个仅可使用一次）</Text>
-                  <Button type="link" onClick={() => setShowBackupModal(true)}>
-                    下载
-                  </Button>
-                </div>
-              }
-              dataSource={backupCodes}
-              renderItem={(code, index) => (
-                <List.Item
-                  actions={[
-                    <Button
-                      icon={<CopyOutlined />}
-                      type="text"
-                      onClick={() => handleCopyCode(code)}
-                    >
-                      复制
-                    </Button>,
-                  ]}
-                >
-                  <Space>
-                    <Tag color="blue">{index + 1}</Tag>
-                    <Text style={{ fontFamily: 'monospace', fontSize: '16px', letterSpacing: '2px' }}>
-                      {code}
-                    </Text>
-                  </Space>
-                </List.Item>
-              )}
-            />
-            <Button type="primary" onClick={() => setCurrentStep(0)} block>
-              完成
-            </Button>
-          </Space>
-        </div>
-      ),
     },
     {
       title: '禁用 OTP',
-      description: (
-        <div style={{ padding: '20px 0' }}>
-          <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            <Alert
-              message="确定要禁用 OTP 二次验证吗？"
-              description="禁用后，账户安全性将降低。"
-              type="warning"
-              showIcon
-            />
-            <Paragraph>
-              请输入 Authenticator 应用显示的 6 位验证码以确认禁用：
-            </Paragraph>
-            <Input
-              placeholder="请输入 6 位验证码"
-              maxLength={6}
-              value={disableCode}
-              onChange={(e) => setDisableCode(e.target.value)}
-              size="large"
-              style={{ textAlign: 'center', letterSpacing: '8px', fontSize: '24px' }}
-            />
-            <Space style={{ width: '100%' }}>
-              <Button onClick={() => setCurrentStep(0)} style={{ flex: 1 }}>
-                取消
-              </Button>
-              <Button
-                type="primary"
-                danger
-                onClick={handleDisableOTP}
-                loading={loading}
-                disabled={!disableCode || disableCode.length !== 6}
-                style={{ flex: 1 }}
-              >
-                确认禁用
-              </Button>
-            </Space>
-          </Space>
-        </div>
-      ),
     },
   ];
+
+  // Render content based on current step
+  const renderContent = () => {
+    switch (currentStep) {
+      case 0:
+        return (
+          <div style={{ padding: '20px 0' }}>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              {!otpStatus.otp_enabled ? (
+                <Button
+                  type="primary"
+                  icon={<QrcodeOutlined />}
+                  onClick={handleGenerateSecret}
+                  loading={loading}
+                  size="large"
+                  block
+                >
+                  启用 OTP 验证
+                </Button>
+              ) : (
+                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  <Button
+                    icon={<SafetyOutlined />}
+                    onClick={() => {
+                      setDisableCode('');
+                      setCurrentStep(3);
+                    }}
+                    size="large"
+                    block
+                  >
+                    禁用 OTP 验证
+                  </Button>
+                  <Button
+                    onClick={handleShowBackupCodes}
+                    size="large"
+                    block
+                  >
+                    查看备份码
+                  </Button>
+                </Space>
+              )}
+            </Space>
+          </div>
+        );
+
+      case 1:
+        return (
+          <div style={{ padding: '20px 0', textAlign: 'center' }}>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              <Alert
+                message="使用 Google Authenticator 等应用扫描下方二维码"
+                type="info"
+                showIcon
+              />
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                <img src={qrCode} alt="QR Code" style={{ width: 256, height: 256 }} />
+              </div>
+              <div>
+                <Text strong>密钥：</Text>
+                <Input
+                  value={secret}
+                  readOnly
+                  suffix={
+                    <CopyOutlined
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(secret);
+                        Modal.success({ title: '已复制', content: '密钥已复制到剪贴板' });
+                      }}
+                    />
+                  }
+                  style={{ fontFamily: 'monospace', fontSize: '16px' }}
+                />
+              </div>
+              <div>
+                <Text>1. 使用 Google Authenticator、Authy 等 OTP 应用</Text>
+                <Text>2. 扫描上方二维码或手动输入密钥</Text>
+                <Text>3. 输入应用显示的 6 位验证码</Text>
+              </div>
+              <Input
+                placeholder="请输入应用显示的 6 位验证码"
+                maxLength={6}
+                value={verifyCode}
+                onChange={(e) => setVerifyCode(e.target.value)}
+                size="large"
+                style={{ textAlign: 'center', letterSpacing: '8px', fontSize: '24px' }}
+              />
+              <Space style={{ width: '100%' }}>
+                <Button onClick={() => setCurrentStep(0)} style={{ flex: 1 }}>
+                  取消
+                </Button>
+                <Button
+                  type="primary"
+                  onClick={handleEnableOTP}
+                  loading={loading}
+                  disabled={!verifyCode || verifyCode.length !== 6}
+                  style={{ flex: 1 }}
+                >
+                  验证并启用
+                </Button>
+              </Space>
+            </Space>
+          </div>
+        );
+
+      case 2:
+        return (
+          <div style={{ padding: '20px 0' }}>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              <Alert
+                message="OTP 二次验证已成功启用！"
+                description="请保存以下备份码，当无法使用 Authenticator 时可以使用这些代码登录。"
+                type="success"
+                showIcon
+              />
+              <List
+                header={
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text strong>备份码（每个仅可使用一次）</Text>
+                    <Button type="link" onClick={() => setShowBackupModal(true)}>
+                      下载
+                    </Button>
+                  </div>
+                }
+                dataSource={backupCodes}
+                renderItem={(code, index) => (
+                  <List.Item
+                    actions={[
+                      <Button
+                        icon={<CopyOutlined />}
+                        type="text"
+                        onClick={() => handleCopyCode(code)}
+                      >
+                        复制
+                      </Button>,
+                    ]}
+                  >
+                    <Space>
+                      <Tag color="blue">{index + 1}</Tag>
+                      <Text style={{ fontFamily: 'monospace', fontSize: '16px', letterSpacing: '2px' }}>
+                        {code}
+                      </Text>
+                    </Space>
+                  </List.Item>
+                )}
+              />
+              <Button type="primary" onClick={() => setCurrentStep(0)} block>
+                完成
+              </Button>
+            </Space>
+          </div>
+        );
+
+      case 3:
+        return (
+          <div style={{ padding: '20px 0' }}>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              <Alert
+                message="确定要禁用 OTP 二次验证吗？"
+                description="禁用后，账户安全性将降低。"
+                type="warning"
+                showIcon
+              />
+              <Paragraph>
+                请输入 Authenticator 应用显示的 6 位验证码以确认禁用：
+              </Paragraph>
+              <Input
+                placeholder="请输入 6 位验证码"
+                maxLength={6}
+                value={disableCode}
+                onChange={(e) => setDisableCode(e.target.value)}
+                size="large"
+                style={{ textAlign: 'center', letterSpacing: '8px', fontSize: '24px' }}
+              />
+              <Space style={{ width: '100%' }}>
+                <Button onClick={() => setCurrentStep(0)} style={{ flex: 1 }}>
+                  取消
+                </Button>
+                <Button
+                  type="primary"
+                  danger
+                  onClick={handleDisableOTP}
+                  loading={loading}
+                  disabled={!disableCode || disableCode.length !== 6}
+                  style={{ flex: 1 }}
+                >
+                  确认禁用
+                </Button>
+              </Space>
+            </Space>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
 
   return (
     <div style={{ padding: '24px' }}>
@@ -355,6 +371,10 @@ const OTPSettings: React.FC = () => {
         </div>
 
         <Steps current={currentStep} items={stepsItems} />
+
+        <div style={{ marginTop: '24px' }}>
+          {renderContent()}
+        </div>
       </Card>
 
       <Modal
