@@ -11,7 +11,11 @@ tmp/
 .playwright-mcp/
 # Test binary, built with `go test -c`
 *.test
-
+controlplane
+cmd/controlplane/controlplane
+cmd/controlplane
+cmd/bin/
+cmd/data/
 # Output of the go coverage tool
 *.out
 
