@@ -61,17 +61,16 @@ cd ../ai-worktrees/${repo_name}/<task-name>
 * 进入后必须先执行环境初始化：
 
 ```bash
-go mod tidy
-go build ./...
+make setup
+make build
 ```
 
 * 所有修改仅允许发生在 `../ai-worktrees/${repo_name}/<task-name>/` 内
 
 * 任务完成后，运行下面的命令进行编译测试，如果有错误，请修改。
 ```bash
-go mod tidy
-go build ./...
-go test ./...
+make build
+make test 
 ```
 
 * 任务完成后要提醒人类进行分支合并操作。合并完成后，删除该 worktree
@@ -169,9 +168,9 @@ git worktree prune
 * 新增功能应补充必要的单元测试（如仓库已有测试体系）
 
 ```bash
-go mod tidy
-go build ./...
-go test ./...
+make build
+make test
+make dev #运行
 ```
 
 ---

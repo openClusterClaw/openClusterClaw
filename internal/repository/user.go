@@ -2,101 +2,141 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/weibh/openClusterClaw/internal/model"
+	"gorm.io/gorm"
 )
 
 // UserRepository handles user data persistence
 type UserRepository struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewUserRepository creates a new user repository
-func NewUserRepository(db *sql.DB) *UserRepository {
+func NewUserRepository(db *gorm.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
 // Create creates a new user
 func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
-	query := `
-		INSERT INTO users (id, username, password_hash, tenant_id, role, is_active)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`
-	_, err := r.db.ExecContext(ctx, query, user.ID, user.Username, user.PasswordHash,
-		user.TenantID, user.Role, user.IsActive)
-	if err != nil {
-		return fmt.Errorf("failed to create user: %w", err)
+	result := r.db.WithContext(ctx).Create(user)
+	if result.Error != nil {
+		return fmt.Errorf("failed to create user: %w", result.Error)
 	}
 	return nil
 }
 
 // GetByID retrieves a user by ID
 func (r *UserRepository) GetByID(ctx context.Context, id string) (*model.User, error) {
-	query := `
-		SELECT id, username, password_hash, tenant_id, role, is_active, created_at, updated_at
-		FROM users WHERE id = ?
-	`
 	var user model.User
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&user.ID, &user.Username, &user.PasswordHash, &user.TenantID,
-		&user.Role, &user.IsActive, &user.CreatedAt, &user.UpdatedAt,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
+	result := r.db.WithContext(ctx).Where("id = ?", id).First(&user)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("user not found")
 		}
-		return nil, fmt.Errorf("failed to get user: %w", err)
+		return nil, fmt.Errorf("failed to get user: %w", result.Error)
 	}
 	return &user, nil
 }
 
 // GetByUsername retrieves a user by username
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*model.User, error) {
-	query := `
-		SELECT id, username, password_hash, tenant_id, role, is_active, created_at, updated_at
-		FROM users WHERE username = ?
-	`
 	var user model.User
-	err := r.db.QueryRowContext(ctx, query, username).Scan(
-		&user.ID, &user.Username, &user.PasswordHash, &user.TenantID,
-		&user.Role, &user.IsActive, &user.CreatedAt, &user.UpdatedAt,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
+	result := r.db.WithContext(ctx).Where("username = ?", username).First(&user)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("user not found")
 		}
-		return nil, fmt.Errorf("failed to get user: %w", err)
+		return nil, fmt.Errorf("failed to get user: %w", result.Error)
 	}
 	return &user, nil
 }
 
 // Update updates a user
 func (r *UserRepository) Update(ctx context.Context, user *model.User) error {
-	query := `
-		UPDATE users
-		SET username = ?, password_hash = ?, tenant_id = ?, role = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`
-	_, err := r.db.ExecContext(ctx, query, user.Username, user.PasswordHash,
-		user.TenantID, user.Role, user.IsActive, user.ID)
-	if err != nil {
-		return fmt.Errorf("failed to update user: %w", err)
+	result := r.db.WithContext(ctx).Model(user).Updates(map[string]any{
+		"username":         user.Username,
+		"password_hash":    user.PasswordHash,
+		"tenant_id":        user.TenantID,
+		"role":             user.Role,
+		"is_active":        user.IsActive,
+		"otp_secret":       user.OTPSecret,
+		"otp_enabled":      user.OTPEnabled,
+		"otp_backup_codes": user.OTPBackupCodes,
+	})
+	if result.Error != nil {
+		return fmt.Errorf("failed to update user: %w", result.Error)
 	}
 	return nil
 }
 
+// UpdateOTPSettings updates user's OTP settings
+func (r *UserRepository) UpdateOTPSettings(ctx context.Context, userID string, otpSecret *string, otpEnabled bool, backupCodes *string) error {
+	result := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{
+		"otp_secret":      otpSecret,
+		"otp_enabled":     otpEnabled,
+		"otp_backup_codes": backupCodes,
+	})
+	if result.Error != nil {
+		return fmt.Errorf("failed to update OTP settings: %w", result.Error)
+	}
+	return nil
+}
+
+// SetTempOTPToken sets a temporary token for OTP verification during login
+func (r *UserRepository) SetTempOTPToken(ctx context.Context, userID, token string, expiresAt string) error {
+	var expiresTime *time.Time
+	if expiresAt != "" {
+		parsed, err := time.Parse(time.RFC3339, expiresAt)
+		if err == nil {
+			expiresTime = &parsed
+		}
+	}
+	result := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{
+		"temp_otp_token":            token,
+		"temp_otp_token_expires_at": expiresTime,
+	})
+	if result.Error != nil {
+		return fmt.Errorf("failed to set temp OTP token: %w", result.Error)
+	}
+	return nil
+}
+
+// ClearTempOTPToken clears the temporary token
+func (r *UserRepository) ClearTempOTPToken(ctx context.Context, userID string) error {
+	result := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{
+		"temp_otp_token":            nil,
+		"temp_otp_token_expires_at": nil,
+	})
+	if result.Error != nil {
+		return fmt.Errorf("failed to clear temp OTP token: %w", result.Error)
+	}
+	return nil
+}
+
+// GetByTempOTPToken retrieves a user by temporary OTP token
+func (r *UserRepository) GetByTempOTPToken(ctx context.Context, token string) (*model.User, error) {
+	var user model.User
+	result := r.db.WithContext(ctx).Where("temp_otp_token = ?", token).First(&user)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user by temp token: %w", result.Error)
+	}
+	return &user, nil
+}
+
 // Delete deletes a user by ID
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM users WHERE id = ?`
-	result, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("failed to delete user: %w", err)
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.User{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete user: %w", result.Error)
 	}
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
+	if result.RowsAffected == 0 {
 		return fmt.Errorf("user not found")
 	}
 	return nil
@@ -104,58 +144,24 @@ func (r *UserRepository) Delete(ctx context.Context, id string) error {
 
 // List retrieves a list of users, optionally filtered by tenant
 func (r *UserRepository) List(ctx context.Context, tenantID string, limit, offset int) ([]*model.User, int, error) {
-	var query string
-	var args []interface{}
-
-	if tenantID != "" {
-		query = `
-			SELECT id, username, password_hash, tenant_id, role, is_active, created_at, updated_at
-			FROM users WHERE tenant_id = ?
-			ORDER BY created_at DESC LIMIT ? OFFSET ?
-		`
-		args = []interface{}{tenantID, limit, offset}
-	} else {
-		query = `
-			SELECT id, username, password_hash, tenant_id, role, is_active, created_at, updated_at
-			FROM users
-			ORDER BY created_at DESC LIMIT ? OFFSET ?
-		`
-		args = []interface{}{limit, offset}
-	}
-
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list users: %w", err)
-	}
-	defer rows.Close()
-
 	var users []*model.User
-	for rows.Next() {
-		var user model.User
-		if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.TenantID,
-			&user.Role, &user.IsActive, &user.CreatedAt, &user.UpdatedAt); err != nil {
-			return nil, 0, fmt.Errorf("failed to scan user: %w", err)
-		}
-		users = append(users, &user)
-	}
+	query := r.db.WithContext(ctx).Model(&model.User{})
 
-	// Get total count
-	var countQuery string
-	var countArgs []interface{}
 	if tenantID != "" {
-		countQuery = `SELECT COUNT(*) FROM users WHERE tenant_id = ?`
-		countArgs = []interface{}{tenantID}
-	} else {
-		countQuery = `SELECT COUNT(*) FROM users`
-		countArgs = []interface{}{}
+		query = query.Where("tenant_id = ?", tenantID)
 	}
 
-	var total int
-	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count users: %w", err)
 	}
 
-	return users, total, nil
+	result := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&users)
+	if result.Error != nil {
+		return nil, 0, fmt.Errorf("failed to list users: %w", result.Error)
+	}
+
+	return users, int(total), nil
 }
 
 // GenerateID generates a new UUID for a user

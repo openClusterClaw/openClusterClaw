@@ -91,6 +91,22 @@ export interface LoginResponse {
   };
 }
 
+export interface LoginOTPResponse {
+  temp_token?: string;
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  user?: {
+    id: string;
+    username: string;
+    tenant_id: string;
+    role: string;
+    is_active: boolean;
+    created_at: string;
+  };
+  requires_otp: boolean;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -102,8 +118,8 @@ export interface User {
 
 // Auth API
 export const authApi = {
-  login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-    const response = await axios.post<ApiResponse<LoginResponse>>(`${API_BASE_URL}/auth/login`, credentials);
+  login: async (credentials: LoginRequest): Promise<LoginOTPResponse> => {
+    const response = await axios.post<ApiResponse<LoginOTPResponse>>(`${API_BASE_URL}/auth/login`, credentials);
     return response.data.data;
   },
 

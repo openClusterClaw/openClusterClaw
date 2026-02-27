@@ -11,6 +11,7 @@ type Config struct {
 	K8S      K8SConfig      `mapstructure:"k8s"`
 	Log      LogConfig      `mapstructure:"log"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
+	OTP      OTPConfig      `mapstructure:"otp"`
 }
 
 type ServerConfig struct {
@@ -39,6 +40,11 @@ type LogConfig struct {
 type JWTConfig struct {
 	Secret     string `mapstructure:"secret"`
 	ExpireTime int    `mapstructure:"expire_time"`
+}
+
+type OTPConfig struct {
+	EncryptionKey string `mapstructure:"encryption_key"`
+	Issuer        string `mapstructure:"issuer"`
 }
 
 var cfg *Config

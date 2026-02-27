@@ -1,4 +1,5 @@
 [build]
+  pre_cmd = ["rm -rf bin"]
   bin = "./bin/controlplane"
   cmd = "go build -o ./bin/controlplane ./cmd/controlplane/main.go"
   delay = 1000

@@ -5,26 +5,42 @@ import (
 	"github.com/weibh/openClusterClaw/internal/embed"
 	"github.com/weibh/openClusterClaw/internal/middleware"
 	"github.com/weibh/openClusterClaw/internal/pkg/jwt"
+	"github.com/weibh/openClusterClaw/internal/pkg/otp"
 	"github.com/weibh/openClusterClaw/internal/service"
+	"github.com/weibh/openClusterClaw/internal/repository"
+	"github.com/weibh/openClusterClaw/config"
 )
 
-// Router sets up the API routes
+// Router sets up API routes
 type Router struct {
 	handler      *Handler
 	authHandler  *AuthHandler
+	otpHandler   *OTPHandler
 	engine       *gin.Engine
 	jwtService   *jwt.JWTService
 }
 
 // NewRouter creates a new router
-func NewRouter(instanceService service.InstanceService, authService *service.AuthService, jwtService *jwt.JWTService) *Router {
+func NewRouter(
+	instanceService service.InstanceService,
+	authService *service.AuthService,
+	jwtService *jwt.JWTService,
+	userRepo *repository.UserRepository,
+	cfg *config.Config,
+) *Router {
 	handler := NewHandler(instanceService)
 	authHandler := NewAuthHandler(authService)
 	engine := gin.Default()
 
+	// Create OTP service from config
+	otpService := otp.NewService(cfg.OTP.EncryptionKey, cfg.OTP.Issuer)
+	otpSvc := service.NewOTPService(userRepo, otpService, jwtService)
+	otpHandler := NewOTPHandler(otpSvc, authService)
+
 	return &Router{
 		handler:      handler,
 		authHandler:  authHandler,
+		otpHandler:   otpHandler,
 		engine:       engine,
 		jwtService:   jwtService,
 	}
@@ -37,8 +53,9 @@ func (r *Router) SetupRoutes() {
 		// Auth routes (public)
 		auth := api.Group("/auth")
 		{
-			auth.POST("/login", r.authHandler.Login)
+			auth.POST("/login", r.otpHandler.LoginWithOTP)
 			auth.POST("/refresh", r.authHandler.RefreshToken)
+			auth.POST("/otp/verify", r.otpHandler.VerifyOTP)
 		}
 
 		// Authenticated routes
@@ -50,6 +67,16 @@ func (r *Router) SetupRoutes() {
 			{
 				auth.POST("/logout", r.authHandler.Logout)
 				auth.GET("/me", r.authHandler.GetCurrentUser)
+			}
+
+			// OTP routes
+			otp := authenticated.Group("/auth/otp")
+			{
+				otp.POST("/generate", r.otpHandler.GenerateSecret)
+				otp.POST("/enable", r.otpHandler.EnableOTP)
+				otp.POST("/disable", r.otpHandler.DisableOTP)
+				otp.GET("/backup", r.otpHandler.GetBackupCodes)
+				otp.GET("/status", r.otpHandler.GetOTPStatus)
 			}
 
 			// User management (admin only)
@@ -83,7 +110,7 @@ func (r *Router) SetupRoutes() {
 	embed.SetupRouter(r.engine)
 }
 
-// Engine returns the gin engine
+// Engine returns gin engine
 func (r *Router) Engine() *gin.Engine {
 	return r.engine
 }

@@ -2,9 +2,10 @@ package repository
 
 import (
 	"context"
-	"database/sql"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/weibh/openClusterClaw/internal/model"
+	"gorm.io/gorm"
 )
 
 // InstanceRepository defines the interface for instance data access
@@ -42,21 +43,13 @@ type ProjectRepository interface {
 	Update(ctx context.Context, project *model.Project) error
 }
 
-// DB defines the database interface
-type DB interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
-}
-
 // instanceRepository implements InstanceRepository
 type instanceRepository struct {
-	db DB
+	db *gorm.DB
 }
 
 // NewInstanceRepository creates a new instance repository
-func NewInstanceRepository(db DB) InstanceRepository {
+func NewInstanceRepository(db *gorm.DB) InstanceRepository {
 	return &instanceRepository{db: db}
 }
 
@@ -65,94 +58,74 @@ func (r *instanceRepository) Create(ctx context.Context, instance *model.ClawIns
 		instance.ID = uuid.New().String()
 	}
 
-	query := `
-		INSERT INTO claw_instances (id, name, tenant_id, project_id, type, version, status, config, cpu, memory, config_dir, data_dir, storage_size)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err := r.db.ExecContext(ctx, query,
-		instance.ID, instance.Name, instance.TenantID, instance.ProjectID,
-		instance.Type, instance.Version, string(instance.Status), instance.Config,
-		instance.CPU, instance.Memory, instance.ConfigDir, instance.DataDir, instance.StorageSize,
-	)
-	return err
+	result := r.db.WithContext(ctx).Create(instance)
+	if result.Error != nil {
+		return fmt.Errorf("failed to create instance: %w", result.Error)
+	}
+	return nil
 }
 
 func (r *instanceRepository) GetByID(ctx context.Context, id string) (*model.ClawInstance, error) {
-	query := `SELECT id, name, tenant_id, project_id, type, version, status, config, cpu, memory, config_dir, data_dir, storage_size, created_at, updated_at FROM claw_instances WHERE id = ?`
-	row := r.db.QueryRowContext(ctx, query, id)
-
-	instance := &model.ClawInstance{}
-	var status string
-	err := row.Scan(
-		&instance.ID, &instance.Name, &instance.TenantID, &instance.ProjectID,
-		&instance.Type, &instance.Version, &status, &instance.Config,
-		&instance.CPU, &instance.Memory, &instance.ConfigDir, &instance.DataDir, &instance.StorageSize,
-		&instance.CreatedAt, &instance.UpdatedAt,
-	)
-	if err != nil {
-		return nil, err
+	var instance model.ClawInstance
+	result := r.db.WithContext(ctx).Where("id = ?", id).First(&instance)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("instance not found")
+		}
+		return nil, fmt.Errorf("failed to get instance: %w", result.Error)
 	}
-	instance.Status = model.InstanceStatus(status)
-	return instance, nil
+	return &instance, nil
 }
 
 func (r *instanceRepository) List(ctx context.Context, tenantID, projectID string, limit, offset int) ([]*model.ClawInstance, error) {
-	query := `
-		SELECT id, name, tenant_id, project_id, type, version, status, config, cpu, memory, config_dir, data_dir, storage_size, created_at, updated_at
-		FROM claw_instances
-		WHERE (? = '' OR tenant_id = ?)
-		AND (? = '' OR project_id = ?)
-		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`
-	rows, err := r.db.QueryContext(ctx, query, tenantID, tenantID, projectID, projectID, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
 	var instances []*model.ClawInstance
-	for rows.Next() {
-		instance := &model.ClawInstance{}
-		var status string
-		err := rows.Scan(
-			&instance.ID, &instance.Name, &instance.TenantID, &instance.ProjectID,
-			&instance.Type, &instance.Version, &status, &instance.Config,
-			&instance.CPU, &instance.Memory, &instance.ConfigDir, &instance.DataDir, &instance.StorageSize,
-			&instance.CreatedAt, &instance.UpdatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		instance.Status = model.InstanceStatus(status)
-		instances = append(instances, instance)
+	query := r.db.WithContext(ctx).Model(&model.ClawInstance{})
+
+	if tenantID != "" {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+	if projectID != "" {
+		query = query.Where("project_id = ?", projectID)
 	}
 
+	result := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&instances)
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to list instances: %w", result.Error)
+	}
 	return instances, nil
 }
 
 func (r *instanceRepository) Update(ctx context.Context, instance *model.ClawInstance) error {
-	query := `
-		UPDATE claw_instances
-		SET name = ?, type = ?, version = ?, status = ?, config = ?, cpu = ?, memory = ?, config_dir = ?, data_dir = ?, storage_size = ?, updated_at = datetime('now')
-		WHERE id = ?
-	`
-	_, err := r.db.ExecContext(ctx, query,
-		instance.Name, instance.Type, instance.Version, string(instance.Status),
-		instance.Config, instance.CPU, instance.Memory, instance.ConfigDir, instance.DataDir, instance.StorageSize,
-		instance.ID,
-	)
-	return err
+	result := r.db.WithContext(ctx).Model(instance).Updates(map[string]any{
+		"name":         instance.Name,
+		"type":         instance.Type,
+		"version":      instance.Version,
+		"status":       instance.Status,
+		"config":       instance.Config,
+		"cpu":          instance.CPU,
+		"memory":       instance.Memory,
+		"config_dir":   instance.ConfigDir,
+		"data_dir":     instance.DataDir,
+		"storage_size": instance.StorageSize,
+	})
+	if result.Error != nil {
+		return fmt.Errorf("failed to update instance: %w", result.Error)
+	}
+	return nil
 }
 
 func (r *instanceRepository) UpdateStatus(ctx context.Context, id string, status model.InstanceStatus) error {
-	query := `UPDATE claw_instances SET status = ?, updated_at = datetime('now') WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, query, string(status), id)
-	return err
+	result := r.db.WithContext(ctx).Model(&model.ClawInstance{}).Where("id = ?", id).Update("status", status)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update status: %w", result.Error)
+	}
+	return nil
 }
 
 func (r *instanceRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM claw_instances WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, query, id)
-	return err
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&model.ClawInstance{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete instance: %w", result.Error)
+	}
+	return nil
 }

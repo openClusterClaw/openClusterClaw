@@ -14,14 +14,23 @@ const (
 
 // User is the database model for users
 type User struct {
-	ID           string    `db:"id" json:"id"`
-	Username     string    `db:"username" json:"username"`
-	PasswordHash string    `db:"password_hash" json:"-"`
-	TenantID     string    `db:"tenant_id" json:"tenant_id"`
-	Role         UserRole  `db:"role" json:"role"`
-	IsActive     bool      `db:"is_active" json:"is_active"`
-	CreatedAt    time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt    time.Time `db:"updated_at" json:"updated_at"`
+	ID                string     `gorm:"primaryKey" json:"id"`
+	Username          string     `gorm:"uniqueIndex;not null" json:"username"`
+	PasswordHash      string     `gorm:"not null" json:"-"`
+	TenantID          string     `gorm:"index;not null;default:'default-tenant'" json:"tenant_id"`
+	Role              UserRole   `gorm:"not null;default:'user'" json:"role"`
+	IsActive          bool       `gorm:"default:true" json:"is_active"`
+	OTPSecret         *string    `json:"-"`                      // Encrypted OTP secret
+	OTPEnabled        bool       `gorm:"default:false" json:"otp_enabled"` // Whether OTP is enabled
+	OTPBackupCodes    *string    `json:"-"`                      // JSON array of backup codes
+	TempOTPToken      *string    `gorm:"index" json:"-"`         // Temporary token for login OTP verification
+	TempOTPTokenExpiresAt *time.Time `json:"-"`                  // Expiration time for temp token
+	CreatedAt         time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt         time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (User) TableName() string {
+	return "users"
 }
 
 // UserResponse represents user information for API responses (without sensitive data)

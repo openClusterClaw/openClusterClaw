@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,16 +13,18 @@ import (
 
 	"github.com/weibh/openClusterClaw/config"
 	"github.com/weibh/openClusterClaw/internal/api"
+	"github.com/weibh/openClusterClaw/internal/model"
 	"github.com/weibh/openClusterClaw/internal/pkg/jwt"
 	"github.com/weibh/openClusterClaw/internal/repository"
 	"github.com/weibh/openClusterClaw/internal/runtime/k8s"
 	"github.com/weibh/openClusterClaw/internal/service"
-	_ "modernc.org/sqlite"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func main() {
 	// Load configuration
-	cfg, err := config.Load("./config/config.yaml")
+	cfg, err := config.Load("../../config/config.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
@@ -39,7 +40,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	defer db.Close()
 
 	// Initialize repositories
 	instanceRepo := repository.NewInstanceRepository(db)
@@ -85,7 +85,7 @@ func main() {
 	}
 
 	// Initialize router
-	router := api.NewRouter(instanceService, authService, jwtService)
+	router := api.NewRouter(instanceService, authService, jwtService, userRepo, cfg)
 	router.SetupRoutes()
 	engine := router.Engine()
 
@@ -124,7 +124,7 @@ func main() {
 }
 
 // initDB initializes the database connection and creates tables
-func initDB(cfg *config.Config) (*sql.DB, error) {
+func initDB(cfg *config.Config) (*gorm.DB, error) {
 	// Ensure data directory exists
 	dataDir := filepath.Dir(cfg.Database.Path)
 	if dataDir != "." && dataDir != "" {
@@ -133,16 +133,23 @@ func initDB(cfg *config.Config) (*sql.DB, error) {
 		}
 	}
 
-	// Open database connection
-	db, err := sql.Open("sqlite", cfg.Database.Path+"?_pragma=foreign_keys(1)")
+	// Open database connection with foreign key support
+	dsn := cfg.Database.Path + "?_pragma=foreign_keys(1)"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Get underlying sql.DB for configuration
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database instance: %w", err)
 	}
 
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
+	if err := sqlDB.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -156,84 +163,19 @@ func initDB(cfg *config.Config) (*sql.DB, error) {
 	return db, nil
 }
 
-// runMigrations creates the database tables
-func runMigrations(db *sql.DB) error {
-	migrations := []string{
-		`CREATE TABLE IF NOT EXISTS tenants (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL UNIQUE,
-			max_instances INTEGER DEFAULT 10,
-			max_cpu TEXT DEFAULT '10',
-			max_memory TEXT DEFAULT '20Gi',
-			max_storage TEXT DEFAULT '100Gi',
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS projects (
-			id TEXT PRIMARY KEY,
-			tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-			name TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(tenant_id, name)
-		)`,
-		`CREATE TABLE IF NOT EXISTS config_templates (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL UNIQUE,
-			description TEXT,
-			variables BLOB,
-			adapter_type TEXT NOT NULL,
-			version TEXT DEFAULT '1.0.0',
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS claw_instances (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-			project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-			type TEXT NOT NULL,
-			version TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'Creating',
-			config BLOB,
-			cpu TEXT,
-			memory TEXT,
-			config_dir TEXT,
-			data_dir TEXT,
-			storage_size TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(tenant_id, name)
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_claw_instances_tenant ON claw_instances(tenant_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_claw_instances_project ON claw_instances(project_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_claw_instances_status ON claw_instances(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects(tenant_id)`,
-		`CREATE TABLE IF NOT EXISTS users (
-			id TEXT PRIMARY KEY,
-			username TEXT NOT NULL UNIQUE,
-			password_hash TEXT NOT NULL,
-			tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
-			role TEXT DEFAULT 'user',
-			is_active BOOLEAN DEFAULT true,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`,
-	}
-
-	for _, migration := range migrations {
-		if _, err := db.Exec(migration); err != nil {
-			return fmt.Errorf("migration failed: %w", err)
-		}
-	}
-
-	return nil
+// runMigrations creates the database tables using GORM AutoMigrate
+func runMigrations(db *gorm.DB) error {
+	return db.AutoMigrate(
+		&model.Tenant{},
+		&model.Project{},
+		&model.ConfigTemplate{},
+		&model.ClawInstance{},
+		&model.User{},
+	)
 }
 
 // initializeDefaultData creates default tenant and admin user if they don't exist
-func initializeDefaultData(db *sql.DB, authService *service.AuthService, userRepo *repository.UserRepository) error {
+func initializeDefaultData(db *gorm.DB, authService *service.AuthService, userRepo *repository.UserRepository) error {
 	ctx := context.Background()
 
 	// Check if default admin user exists
@@ -245,11 +187,15 @@ func initializeDefaultData(db *sql.DB, authService *service.AuthService, userRep
 
 	// Create default tenant
 	tenantID := "default-tenant"
-	_, err = db.Exec(`
-		INSERT OR IGNORE INTO tenants (id, name, max_instances, max_cpu, max_memory, max_storage)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, tenantID, "Default Tenant", 100, "100", "200Gi", "1Ti")
-	if err != nil {
+	tenant := &model.Tenant{
+		ID:           tenantID,
+		Name:         "Default Tenant",
+		MaxInstances: 100,
+		MaxCPU:       "100",
+		MaxMemory:    "200Gi",
+		MaxStorage:   "1Ti",
+	}
+	if err := db.Create(tenant).Error; err != nil {
 		return fmt.Errorf("failed to create default tenant: %w", err)
 	}
 
